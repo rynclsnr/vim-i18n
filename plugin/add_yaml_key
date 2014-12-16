@@ -3,67 +3,52 @@
 
 require "yaml"
 
-class Hash
-  def sort_by_key(recursive=false, &block)
-    self.keys.sort(&block).reduce({}) do |seed, key|
-      seed[key] = self[key]
-      if recursive && seed[key].is_a?(Hash)
-        seed[key] = seed[key].sort_by_key(true, &block)
-      end
-      seed
-    end
-  end
-end
+class VimI18n
 
-class YAMLator
-  attr_reader :hash
-  attr_reader :data
+  DELIMITER = "."
 
-  def initialize(data)
-    @data, @hash = data, YAML.load(data)
+  def initialize(path, key, value)
+    @path, @key, @value = path, key, value
   end
 
-  def to_yaml
-    sorted_hash = hash.sort_by_key(true) { |x, y| x.to_s <=> y.to_s }
-    [preamble, sorted_hash.to_yaml].join
+  def self.perform(*args)
+    new(*args).perform
   end
 
-  def []=(key, value)
-    chain = key.split('.')
-    current_hash = hash
-    chain.each_with_index do |part, index|
-      is_last = index == chain.length - 1
-      key_this_far = chain[0..index].join('.')
+  def perform
+    keys = key.split(DELIMITER)
+    hash = data
 
-      case current_hash[part]
+    keys.each do |k|
+      last = keys.index(k) == keys.length - 1
+      case hash[k]
       when Hash
-        raise("trying to add a string to a hash key in use: #{key_this_far.inspect}") if is_last
+        raise ArgumentError, "Hash value already present" if last
       when String
-        raise("trying to add to a string key in use: #{key_this_far.inspect}")
-      else
-        current_hash[part] = is_last ? value : {}
+        raise ArgumentError, "String value already present"
+      when NilClass
+        if last
+          hash[k] = value
+        else
+          hash[k] = {}
+        end
       end
-      current_hash = current_hash[part]
+
+      hash = hash[k]
     end
-    value
+
+    File.open(path, 'w') {|f| f.write(YAML.dump(data)) }
   end
 
   private
 
-  def preamble
-    data[/\A(\s*(#.*?)?\n)+/]
+  attr_reader :path, :key, :value
+
+  def data
+    @data ||= File.exists?(path) ? YAML.load_file(path) : {}
   end
+
 end
 
-file = ARGV[0]
-key = ARGV[1]
-value = ARGV[2]
 
-locale = File.basename(file, ".yml")[/[^\.]+$/]
-file = File.expand_path(file)
-file_content = File.exists?(file) ? File.read(file) : "#{locale}:"
-yamlator = YAMLator.new(file_content)
-yamlator[yamlator.hash.keys.first + "." + key] = value
-
-File.open(file, 'w') { |f| f.write yamlator.to_yaml }
-
+VimI18n.perform(File.expand_path(ARGV[0]), [ File.basename(ARGV[0].strip, ".yml"), ARGV[1].strip ].join("."), ARGV[2].strip.chomp)

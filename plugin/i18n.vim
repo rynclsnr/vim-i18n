@@ -1,28 +1,14 @@
 let s:install_path=expand("<sfile>:p:h")
 
-function! IsSyntaxRuby()
-  let syntax = synIDattr(synID(line("'<"),col("'<"),1),"name")
-  return match(syntax, "ruby")
-endfunction
-
 function! I18nTranslateString()
   " copy last visual selection to x register
   normal gv"xy
   let text = s:removeQuotes(s:strip(@x))
   let variables = s:findInterpolatedVariables(text)
-  let key = s:askForI18nKey()
-  if &filetype == 'eruby' || &filetype == 'eruby.html'
-    let fullKey = s:determineFullKey(key)
-    if IsSyntaxRuby() != -1
-      let @x = s:generateI18nCall(key, variables, "t('", "')")
-    else
-      let @x = s:generateI18nCall(key, variables, "<%= t('", "') %>")
-    endif
-    call s:addStringToYamlStore(text, fullKey)
-  else
-    let @x = s:generateI18nCall(key, variables, "t('", "')")
-    call s:addStringToYamlStore(text, key)
-  endif
+  let key = s:askForI18nKey(s:generateI18nKey(text))
+  let fullKey = s:determineFullKey(key)
+  let @x = s:generateI18nCall(key, variables, "t('", "')")
+  call s:addStringToYamlStore(text, fullKey)
   " replace selection
   normal gv"xp
 endfunction
@@ -34,7 +20,9 @@ function! s:removeQuotes(text)
 endfunction
 
 function! s:strip(text)
-  return substitute(a:text, "^\\s*", "", "")
+  let text = substitute(a:text, "^\\s+", "", "g")
+  let text = substitute(a:text, "\\s+$", "", "g")
+  return text
 endfunction
 
 function! s:findInterpolatedVariables(text)
@@ -60,14 +48,18 @@ function! s:generateI18nArguments(variables)
   return join(arguments, ", ")
 endfunction
 
-function! s:askForI18nKey()
+function! s:generateI18nKey(text)
+  let text = substitute(a:text, "[~`!@#%&,=;'’:><//}//{/\"\\|\\.\\*\\-\\$\\^\\[\\]\\(\\)\\?]", "", "g")
+  let text = substitute(text, "\\v\\s", "_", "g")
+  let text = strpart(text, 0, 60)
+  let text = "." . text
+  return text
+endfunction
+
+function! s:askForI18nKey(key)
   call inputsave()
-  let key = ""
-  if exists('g:I18nKey')
-    let key = g:I18nKey
-  endif
+  let key = a:key
   let key = input('I18n key: ', key)
-  let g:I18nKey = key
   call inputrestore()
   return key
 endfunction
